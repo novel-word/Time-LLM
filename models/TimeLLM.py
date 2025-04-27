@@ -254,14 +254,20 @@ class Model(nn.Module):
 
         return dec_out
 
+    # def calcute_lags(self, x_enc):
+    #     q_fft = torch.fft.rfft(x_enc.permute(0, 2, 1).contiguous(), dim=-1)
+    #     k_fft = torch.fft.rfft(x_enc.permute(0, 2, 1).contiguous(), dim=-1)
+    #     res = q_fft * torch.conj(k_fft)
+    #     corr = torch.fft.irfft(res, dim=-1)
+    #     mean_value = torch.mean(corr, dim=1)
+    #     _, lags = torch.topk(mean_value, self.top_k, dim=-1)
+    #     return lags
     def calcute_lags(self, x_enc):
+        x_enc = x_enc.to(torch.float32)  # <-- 临时转换为 float32，兼容 FFT
         q_fft = torch.fft.rfft(x_enc.permute(0, 2, 1).contiguous(), dim=-1)
         k_fft = torch.fft.rfft(x_enc.permute(0, 2, 1).contiguous(), dim=-1)
         res = q_fft * torch.conj(k_fft)
-        corr = torch.fft.irfft(res, dim=-1)
-        mean_value = torch.mean(corr, dim=1)
-        _, lags = torch.topk(mean_value, self.top_k, dim=-1)
-        return lags
+    return res
 
 
 class ReprogrammingLayer(nn.Module):
