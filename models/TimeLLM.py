@@ -178,8 +178,14 @@ class Model(nn.Module):
         self.num_tokens = 1000
         self.mapping_layer = nn.Linear(self.vocab_size, self.num_tokens)
 
-        self.reprogramming_layer = ReprogrammingLayer(configs.d_model, configs.n_heads, self.d_ff, self.d_llm)
-
+        # self.reprogramming_layer = ReprogrammingLayer(configs.d_model, configs.n_heads, self.d_ff, self.d_llm)
+        source_embedding_dim = 768
+        self.reprogramming_layer = ReprogrammingLayer(
+        d_model=configs.d_model,
+        n_heads=configs.n_heads,
+        d_keys=self.d_ff,
+        d_llm=source_embedding_dim  # 修复关键
+        )
         self.patch_nums = int((configs.seq_len - self.patch_len) / self.stride + 2)
         self.head_nf = self.d_ff * self.patch_nums
 
