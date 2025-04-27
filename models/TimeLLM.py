@@ -297,9 +297,9 @@ class ReprogrammingLayer(nn.Module):
 
         target_embedding = self.query_projection(target_embedding).view(B, L, H, -1)
 
-        print("source_embedding.shape before key_projection:", source_embedding.shape)
-        print("key_projection layer expects in_features =", self.key_projection.in_features)
-        print("key_projection layer:", self.key_projection)
+        # print("source_embedding.shape before key_projection:", source_embedding.shape)
+        # print("key_projection layer expects in_features =", self.key_projection.in_features)
+        # print("key_projection layer:", self.key_projection)
         
         source_embedding = self.key_projection(source_embedding).view(S, H, -1)
         value_embedding = self.value_projection(value_embedding).view(S, H, -1)
