@@ -267,7 +267,7 @@ class Model(nn.Module):
         q_fft = torch.fft.rfft(x_enc.permute(0, 2, 1).contiguous(), dim=-1)
         k_fft = torch.fft.rfft(x_enc.permute(0, 2, 1).contiguous(), dim=-1)
         res = q_fft * torch.conj(k_fft)
-    return res
+        return res
 
 
 class ReprogrammingLayer(nn.Module):
