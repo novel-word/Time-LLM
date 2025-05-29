@@ -140,15 +140,15 @@ class Model(nn.Module):
             try:
                 self.tokenizer = BertTokenizer.from_pretrained(
                     'bert-base-uncased', # google-bert/
-                    trust_remote_code=True,
-                    local_files_only=True
+                    # trust_remote_code=True,
+                    # local_files_only=True
                 )
             except EnvironmentError:  # downloads the tokenizer from HF if not already done
                 print("Local tokenizer files not found. Atempting to download them..")
                 self.tokenizer = BertTokenizer.from_pretrained(
                     'bert-base-uncased', # google-bert/
-                    trust_remote_code=True,
-                    local_files_only=False
+                    # trust_remote_code=True,
+                    # local_files_only=False
                 )
         else:
             raise Exception('LLM model is not defined')
