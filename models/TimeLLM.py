@@ -139,14 +139,14 @@ class Model(nn.Module):
 
             try:
                 self.tokenizer = BertTokenizer.from_pretrained(
-                    'google-bert/bert-base-uncased',
+                    'bert-base-uncased', # google-bert/
                     trust_remote_code=True,
                     local_files_only=True
                 )
             except EnvironmentError:  # downloads the tokenizer from HF if not already done
                 print("Local tokenizer files not found. Atempting to download them..")
                 self.tokenizer = BertTokenizer.from_pretrained(
-                    'google-bert/bert-base-uncased',
+                    'bert-base-uncased', # google-bert/
                     trust_remote_code=True,
                     local_files_only=False
                 )
