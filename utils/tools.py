@@ -134,46 +134,103 @@ def del_files(dir_path):
     shutil.rmtree(dir_path)
 
 
-def vali(args, accelerator, model, vali_data, vali_loader, criterion, mae_metric):
+# def vali(args, accelerator, model, vali_data, vali_loader, criterion, mae_metric):
+#     total_loss = []
+#     total_mae_loss = []
+#     model.eval()
+#     with torch.no_grad():
+#         for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in tqdm(enumerate(vali_loader)):
+#             batch_x = batch_x.float().to(accelerator.device)
+#             batch_y = batch_y.float()
+
+#             batch_x_mark = batch_x_mark.float().to(accelerator.device)
+#             batch_y_mark = batch_y_mark.float().to(accelerator.device)
+
+#             # decoder input
+#             dec_inp = torch.zeros_like(batch_y[:, -args.pred_len:, :]).float()
+#             dec_inp = torch.cat([batch_y[:, :args.label_len, :], dec_inp], dim=1).float().to(
+#                 accelerator.device)
+#             # encoder - decoder
+#             if args.use_amp:
+#                 with torch.cuda.amp.autocast():
+#                     if args.output_attention:
+#                         outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+#                     else:
+#                         outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+#             else:
+#                 if args.output_attention:
+#                     outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+#                 else:
+#                     outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+
+#             outputs, batch_y = accelerator.gather_for_metrics((outputs, batch_y))
+
+#             f_dim = -1 if args.features == 'MS' else 0
+#             outputs = outputs[:, -args.pred_len:, f_dim:]
+#             batch_y = batch_y[:, -args.pred_len:, f_dim:].to(accelerator.device)
+
+#             pred = outputs.detach()
+#             true = batch_y.detach()
+
+#             loss = criterion(pred, true)
+
+#             mae_loss = mae_metric(pred, true)
+
+#             total_loss.append(loss.item())
+#             total_mae_loss.append(mae_loss.item())
+
+#     total_loss = np.average(total_loss)
+#     total_mae_loss = np.average(total_mae_loss)
+
+#     model.train()
+#     return total_loss, total_mae_loss
+
+def vali(args, model, vali_data, vali_loader, criterion, mae_metric,epoch,flag, device=None):
     total_loss = []
     total_mae_loss = []
+
+    device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
     model.eval()
+
+    batch_preds = []
+    epoch_trues = []
     with torch.no_grad():
         for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in tqdm(enumerate(vali_loader)):
-            batch_x = batch_x.float().to(accelerator.device)
+            batch_x = batch_x.float().to(device)
             batch_y = batch_y.float()
 
-            batch_x_mark = batch_x_mark.float().to(accelerator.device)
-            batch_y_mark = batch_y_mark.float().to(accelerator.device)
+            batch_x_mark = batch_x_mark.float().to(device)
+            batch_y_mark = batch_y_mark.float().to(device)
 
             # decoder input
             dec_inp = torch.zeros_like(batch_y[:, -args.pred_len:, :]).float()
-            dec_inp = torch.cat([batch_y[:, :args.label_len, :], dec_inp], dim=1).float().to(
-                accelerator.device)
+            dec_inp = torch.cat([batch_y[:, :args.label_len, :], dec_inp], dim=1).float().to(device)
+
             # encoder - decoder
             if args.use_amp:
                 with torch.cuda.amp.autocast():
-                    if args.output_attention:
-                        outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
-                    else:
-                        outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-            else:
-                if args.output_attention:
-                    outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
-                else:
                     outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-
-            outputs, batch_y = accelerator.gather_for_metrics((outputs, batch_y))
+                    if args.output_attention:
+                        outputs = outputs[0]
+            else:
+                outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                if args.output_attention:
+                    outputs = outputs[0]
 
             f_dim = -1 if args.features == 'MS' else 0
             outputs = outputs[:, -args.pred_len:, f_dim:]
-            batch_y = batch_y[:, -args.pred_len:, f_dim:].to(accelerator.device)
+            batch_y = batch_y[:, -args.pred_len:, f_dim:].to(device)
 
             pred = outputs.detach()
             true = batch_y.detach()
 
-            loss = criterion(pred, true)
+            batch_preds.append(pred.cpu().numpy())  #
+            # 只需要在 最后一个 epoch 中，遍历所有 batch 时，把所有真实值保存一次即可。
+            if epoch == args.train_epochs - 1:
+                epoch_trues.append(true.cpu().numpy())
 
+            loss = criterion(pred, true)
             mae_loss = mae_metric(pred, true)
 
             total_loss.append(loss.item())
@@ -182,9 +239,16 @@ def vali(args, accelerator, model, vali_data, vali_loader, criterion, mae_metric
     total_loss = np.average(total_loss)
     total_mae_loss = np.average(total_mae_loss)
 
+    import os
+    save_dir = "./predictions"
+    os.makedirs(save_dir, exist_ok=True)
+    # 只有在最后一个epoch时才会保存真实值，因为每个epoch的真实值都一样。
+    if epoch == args.train_epochs - 1:
+        np.save(os.path.join(save_dir, "{}_trues.npy".format(flag)), np.concatenate(epoch_trues, axis=0))
+    np.save(os.path.join(save_dir, "{}_preds_epoch_{}.npy".format(flag,epoch)), np.concatenate(batch_preds, axis=0))
+
     model.train()
     return total_loss, total_mae_loss
-
 
 def test(args, accelerator, model, train_loader, vali_loader, criterion):
     x, _ = train_loader.dataset.last_insample_window()
