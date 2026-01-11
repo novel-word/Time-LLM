@@ -9,6 +9,131 @@ import warnings
 
 warnings.filterwarnings('ignore')
 
+class Dataset_CT(Dataset):
+    def __init__(self, root_path, flag='train', size=None,
+                 features='S', data_path='CT_data.csv',
+                 target='load', scale=True, timeenc=0, freq='h', percent=100,
+                 seasonal_patterns=None):
+        if size == None:
+            self.seq_len = 24 * 4 * 4
+            self.label_len = 24 * 4
+            self.pred_len = 24 * 4
+        else:
+            self.seq_len = size[0]
+            self.label_len = size[1]
+            self.pred_len = size[2]
+        # init
+        assert flag in ['train', 'test', 'val']
+        type_map = {'train': 0, 'val': 1, 'test': 2}
+        self.set_type = type_map[flag]
+
+        self.percent = percent
+        self.features = features
+        self.target = target
+        self.scale = scale
+        self.timeenc = timeenc
+        self.freq = freq
+
+        # self.percent = percent
+        self.root_path = root_path
+        self.data_path = data_path
+        self.__read_data__()
+
+        self.enc_in = self.data_x.shape[-1]
+        self.tot_len = len(self.data_x) - self.seq_len - self.pred_len + 1
+
+    def __read_data__(self):
+        self.scaler = StandardScaler()
+        df_raw = pd.read_csv(os.path.join(self.root_path, self.data_path))
+
+        # ===== 1) 适配新数据集：时间列名、目标列名、特征列 =====
+        # 如果你的时间列不叫 date，把这里改成你的列名，比如 'timestamp'
+        time_col = 'Date'
+        assert time_col in df_raw.columns, f"找不到时间列 {time_col}"
+
+        # 如果 features='M'/'MS'：默认除时间列外全是数值特征
+        if self.features in ['M', 'MS']:
+            cols_data = [c for c in df_raw.columns if c != time_col]
+            df_data = df_raw[cols_data]
+        else:  # 'S'
+            df_data = df_raw[[self.target]]
+
+        n = len(df_raw)
+
+        # ===== 2) 切分比例（你想怎么切就改这里）=====
+        train_ratio = 0.6
+        val_ratio = 0.2
+        test_ratio = 0.2
+        assert abs(train_ratio + val_ratio + test_ratio - 1.0) < 1e-6
+
+        train_end = int(n * train_ratio)
+        val_end = int(n * (train_ratio + val_ratio))
+        test_end = n
+
+        border1s = [
+            0,
+            train_end - self.seq_len,
+            val_end - self.seq_len
+        ]
+        border2s = [
+            train_end,
+            val_end,
+            test_end
+        ]
+
+        border1 = border1s[self.set_type]
+        border2 = border2s[self.set_type]
+
+        # 如果你还要保留 percent 子采样训练集（原代码的逻辑）
+        if self.set_type == 0:
+            border2 = (border2 - self.seq_len) * self.percent // 100 + self.seq_len
+
+        # ===== 3) 标准化：只用训练集 fit =====
+        if self.scale:
+            train_data = df_data[border1s[0]:border2s[0]]
+            self.scaler.fit(train_data.values)
+            data = self.scaler.transform(df_data.values)
+        else:
+            data = df_data.values
+
+        # ===== 4) 时间特征 =====
+        df_stamp = df_raw[[time_col]][border1:border2].copy()
+        df_stamp[time_col] = pd.to_datetime(df_stamp[time_col])
+
+        if self.timeenc == 0:
+            df_stamp['month'] = df_stamp[time_col].dt.month
+            df_stamp['day'] = df_stamp[time_col].dt.day
+            df_stamp['weekday'] = df_stamp[time_col].dt.weekday
+            df_stamp['hour'] = df_stamp[time_col].dt.hour
+            data_stamp = df_stamp.drop([time_col], axis=1).values
+        else:
+            data_stamp = time_features(pd.to_datetime(df_stamp[time_col].values), freq=self.freq)
+            data_stamp = data_stamp.transpose(1, 0)
+
+        self.data_x = data[border1:border2]
+        self.data_y = data[border1:border2]
+        self.data_stamp = data_stamp
+
+
+    def __getitem__(self, index):
+        feat_id = index // self.tot_len
+        s_begin = index % self.tot_len
+
+        s_end = s_begin + self.seq_len
+        r_begin = s_end - self.label_len
+        r_end = r_begin + self.label_len + self.pred_len
+        seq_x = self.data_x[s_begin:s_end, feat_id:feat_id + 1]
+        seq_y = self.data_y[r_begin:r_end, feat_id:feat_id + 1]
+        seq_x_mark = self.data_stamp[s_begin:s_end]
+        seq_y_mark = self.data_stamp[r_begin:r_end]
+
+        return seq_x, seq_y, seq_x_mark, seq_y_mark
+
+    def __len__(self):
+        return (len(self.data_x) - self.seq_len - self.pred_len + 1) * self.enc_in
+
+    def inverse_transform(self, data):
+        return self.scaler.inverse_transform(data)
 
 class Dataset_ETT_hour(Dataset):
     def __init__(self, root_path, flag='train', size=None,
